@@ -7,7 +7,7 @@ __all__ = ["MiddlewareMixin"]
 
 class MiddlewareMixin:
     sync_capable = True
-    async_capable = True
+    async_capable = False
 
     def __init__(self, get_response):
         if get_response is None:
