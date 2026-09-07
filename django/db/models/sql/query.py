@@ -7,7 +7,6 @@ databases). The abstraction barrier only works one way: this module has to know
 all about the internals of models in order to get the information it needs.
 """
 
-import copy
 import difflib
 import functools
 import sys
@@ -229,6 +228,10 @@ class RawQuery:
 ExplainInfo = namedtuple("ExplainInfo", ("format", "options"))
 
 
+def _clone_dict(d):
+    return {k: _clone_dict(v) for k, v in d.items()}
+
+
 class Query(BaseExpression):
     """A single SQL query."""
 
@@ -419,9 +422,12 @@ class Query(BaseExpression):
         if self._extra_select_cache is not None:
             obj._extra_select_cache = self._extra_select_cache.copy()
         if self.select_related is not False:
-            # Use deepcopy because select_related stores fields in nested
-            # dicts.
-            obj.select_related = copy.deepcopy(obj.select_related)
+            # Use a custom _clone_dict instead of deepcopy for performance
+            # since select_related is simply a dictionary of dictionaries.
+            if isinstance(self.select_related, dict):
+                obj.select_related = _clone_dict(self.select_related)
+            else:
+                obj.select_related = self.select_related
         if "subq_aliases" in self.__dict__:
             obj.subq_aliases = self.subq_aliases.copy()
         obj.used_aliases = self.used_aliases.copy()
