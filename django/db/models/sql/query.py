@@ -69,6 +69,12 @@ FORBIDDEN_ALIAS_PATTERN = _lazy_re_compile(
 EXPLAIN_OPTIONS_PATTERN = _lazy_re_compile(r"[\w-]+")
 
 
+def _copy_select_related(d):
+    if isinstance(d, dict):
+        return {k: _copy_select_related(v) for k, v in d.items()}
+    return d
+
+
 def get_field_names_from_opts(opts):
     if opts is None:
         return set()
@@ -419,9 +425,7 @@ class Query(BaseExpression):
         if self._extra_select_cache is not None:
             obj._extra_select_cache = self._extra_select_cache.copy()
         if self.select_related is not False:
-            # Use deepcopy because select_related stores fields in nested
-            # dicts.
-            obj.select_related = copy.deepcopy(obj.select_related)
+            obj.select_related = _copy_select_related(self.select_related)
         if "subq_aliases" in self.__dict__:
             obj.subq_aliases = self.subq_aliases.copy()
         obj.used_aliases = self.used_aliases.copy()
