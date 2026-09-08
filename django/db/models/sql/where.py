@@ -215,7 +215,10 @@ class WhereNode(tree.Node):
                 self.children[pos] = child.relabeled_clone(change_map)
 
     def clone(self):
-        clone = self.create(connector=self.connector, negated=self.negated)
+        clone = self.__class__.__new__(self.__class__)
+        clone.children = []
+        clone.connector = self.connector
+        clone.negated = self.negated
         for child in self.children:
             if hasattr(child, "clone"):
                 child = child.clone()

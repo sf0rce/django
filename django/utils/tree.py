@@ -33,8 +33,11 @@ class Node:
         __init__() with a signature that conflicts with the one defined in
         Node.__init__().
         """
-        obj = Node(children, connector or cls.default, negated)
-        obj.__class__ = cls
+        obj = cls.__new__(cls)
+        # children is expected to be a sequence
+        obj.children = children[:] if children else []
+        obj.connector = connector or cls.default
+        obj.negated = negated
         return obj
 
     def __str__(self):
