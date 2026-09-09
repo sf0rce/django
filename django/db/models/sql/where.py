@@ -215,11 +215,19 @@ class WhereNode(tree.Node):
                 self.children[pos] = child.relabeled_clone(change_map)
 
     def clone(self):
-        clone = self.create(connector=self.connector, negated=self.negated)
-        for child in self.children:
-            if hasattr(child, "clone"):
-                child = child.clone()
-            clone.children.append(child)
+        """
+        Return a clone of the WhereNode.
+
+        This uses __new__ and list comprehension for better performance,
+        avoiding the overhead of self.create() and list.append().
+        """
+        clone = self.__class__.__new__(self.__class__)
+        clone.connector = self.connector
+        clone.negated = self.negated
+        clone.children = [
+            child.clone() if hasattr(child, "clone") else child
+            for child in self.children
+        ]
         return clone
 
     def relabeled_clone(self, change_map):
