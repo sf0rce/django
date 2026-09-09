@@ -1,0 +1,3 @@
+## 2026-09-04 - Optimize Node.create() via cls.__new__(cls)
+**Learning:** `Node.create()` previously constructed a base `Node` instance and mutated `obj.__class__ = cls` to avoid subclass `__init__` signature conflicts (e.g. `Q`). In CPython, mutating `__class__` on instantiated objects invalidates internal type caches and causes overhead. Replacing this pattern with `cls.__new__(cls)` directly allocates the subclass instance and sets attributes in-place.
+**Action:** Use `cls.__new__(cls)` when factory methods need to bypass `__init__` on subclass hierarchies rather than assigning `obj.__class__`.
