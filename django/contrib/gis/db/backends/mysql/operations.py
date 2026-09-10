@@ -112,6 +112,8 @@ class MySQLOperations(BaseSpatialOperations, DatabaseOperations):
             unsupported.remove("PointOnSurface")
             if self.connection.mysql_version < (12, 0, 1):
                 unsupported.update({"GeoHash", "IsValid"})
+        if self.connection.features.supports_transform:
+            unsupported.remove("Transform")
         return unsupported
 
     def geo_db_type(self, f):
