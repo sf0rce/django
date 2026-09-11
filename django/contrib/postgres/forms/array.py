@@ -31,12 +31,14 @@ class SimpleArrayField(forms.CharField):
 
     def clean(self, value):
         value = super().clean(value)
-        return [self.base_field.clean(val) for val in value]
+        base_clean = self.base_field.clean
+        return [base_clean(val) for val in value]
 
     def prepare_value(self, value):
         if isinstance(value, list):
+            base_prepare_value = self.base_field.prepare_value
             return self.delimiter.join(
-                str(self.base_field.prepare_value(v)) for v in value
+                str(base_prepare_value(v)) for v in value
             )
         return value
 
@@ -49,14 +51,16 @@ class SimpleArrayField(forms.CharField):
             items = []
         errors = []
         values = []
+        base_to_python = self.base_field.to_python
+        error_msg = self.error_messages["item_invalid"]
         for index, item in enumerate(items):
             try:
-                values.append(self.base_field.to_python(item))
+                values.append(base_to_python(item))
             except ValidationError as error:
                 errors.append(
                     prefix_validation_error(
                         error,
-                        prefix=self.error_messages["item_invalid"],
+                        prefix=error_msg,
                         code="item_invalid",
                         params={"nth": index + 1},
                     )
@@ -68,14 +72,16 @@ class SimpleArrayField(forms.CharField):
     def validate(self, value):
         super().validate(value)
         errors = []
+        base_validate = self.base_field.validate
+        error_msg = self.error_messages["item_invalid"]
         for index, item in enumerate(value):
             try:
-                self.base_field.validate(item)
+                base_validate(item)
             except ValidationError as error:
                 errors.append(
                     prefix_validation_error(
                         error,
-                        prefix=self.error_messages["item_invalid"],
+                        prefix=error_msg,
                         code="item_invalid",
                         params={"nth": index + 1},
                     )
@@ -86,14 +92,16 @@ class SimpleArrayField(forms.CharField):
     def run_validators(self, value):
         super().run_validators(value)
         errors = []
+        base_run_validators = self.base_field.run_validators
+        error_msg = self.error_messages["item_invalid"]
         for index, item in enumerate(value):
             try:
-                self.base_field.run_validators(item)
+                base_run_validators(item)
             except ValidationError as error:
                 errors.append(
                     prefix_validation_error(
                         error,
-                        prefix=self.error_messages["item_invalid"],
+                        prefix=error_msg,
                         code="item_invalid",
                         params={"nth": index + 1},
                     )
