@@ -393,7 +393,17 @@ class Query(BaseExpression):
         obj = Empty()
         obj.__class__ = self.__class__
         # Copy references to everything.
-        obj.__dict__ = self.__dict__.copy()
+        dict_copy = self.__dict__.copy()
+        # _annotation_select_cache cannot be copied, as doing so breaks the
+        # (necessary) state in which both annotations and
+        # _annotation_select_cache point to the same underlying objects.
+        # It will get re-populated in the cloned queryset the next time it's
+        # used.
+        dict_copy["_annotation_select_cache"] = None
+        # Clear the cached_property, if it exists.
+        dict_copy.pop("base_table", None)
+        obj.__dict__ = dict_copy
+
         # Clone attributes that can't use shallow copy.
         obj.alias_refcount = self.alias_refcount.copy()
         obj.alias_map = self.alias_map.copy()
@@ -407,12 +417,6 @@ class Query(BaseExpression):
             obj.combined_queries = tuple(
                 [query.clone() for query in self.combined_queries]
             )
-        # _annotation_select_cache cannot be copied, as doing so breaks the
-        # (necessary) state in which both annotations and
-        # _annotation_select_cache point to the same underlying objects.
-        # It will get re-populated in the cloned queryset the next time it's
-        # used.
-        obj._annotation_select_cache = None
         obj.extra = self.extra.copy()
         if self.extra_select_mask is not None:
             obj.extra_select_mask = self.extra_select_mask.copy()
@@ -423,11 +427,10 @@ class Query(BaseExpression):
             # dicts.
             obj.select_related = copy.deepcopy(obj.select_related)
         if "subq_aliases" in self.__dict__:
+            # subq_aliases is an immutable frozenset.
             obj.subq_aliases = self.subq_aliases.copy()
         obj.used_aliases = self.used_aliases.copy()
         obj._filtered_relations = self._filtered_relations.copy()
-        # Clear the cached_property, if it exists.
-        obj.__dict__.pop("base_table", None)
         return obj
 
     def chain(self, klass=None):
