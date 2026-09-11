@@ -49,6 +49,16 @@ class LocMemCache(BaseCache):
         self._cache.move_to_end(key, last=False)
         self._expire_info[key] = self.get_backend_timeout(timeout)
 
+    def replace(self, key, value, timeout=DEFAULT_TIMEOUT, version=None):
+        key = self.make_and_validate_key(key, version=version)
+        pickled = pickle.dumps(value, self.pickle_protocol)
+        with self._lock:
+            if self._has_expired(key):
+                self._delete(key)
+                return False
+            self._set(key, pickled, timeout)
+            return True
+
     def set(self, key, value, timeout=DEFAULT_TIMEOUT, version=None):
         key = self.make_and_validate_key(key, version=version)
         pickled = pickle.dumps(value, self.pickle_protocol)
@@ -111,6 +121,39 @@ class LocMemCache(BaseCache):
         key = self.make_and_validate_key(key, version=version)
         with self._lock:
             return self._delete(key)
+
+    def get_many(self, keys, version=None):
+        key_map = {
+            self.make_and_validate_key(key, version=version): key for key in keys
+        }
+        hits = {}
+        with self._lock:
+            for cache_key, original_key in key_map.items():
+                if self._has_expired(cache_key):
+                    self._delete(cache_key)
+                elif cache_key in self._cache:
+                    pickled = self._cache[cache_key]
+                    self._cache.move_to_end(cache_key, last=False)
+                    hits[original_key] = pickled
+        return {key: pickle.loads(pickled) for key, pickled in hits.items()}
+
+    def set_many(self, data, timeout=DEFAULT_TIMEOUT, version=None):
+        safe_data = {}
+        for key, value in data.items():
+            cache_key = self.make_and_validate_key(key, version=version)
+            safe_data[cache_key] = pickle.dumps(value, self.pickle_protocol)
+        with self._lock:
+            for cache_key, pickled in safe_data.items():
+                self._set(cache_key, pickled, timeout)
+        return []
+
+    def delete_many(self, keys, version=None):
+        cache_keys = [
+            self.make_and_validate_key(key, version=version) for key in keys
+        ]
+        with self._lock:
+            for cache_key in cache_keys:
+                self._delete(cache_key)
 
     def clear(self):
         with self._lock:

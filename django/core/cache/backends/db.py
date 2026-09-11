@@ -112,6 +112,10 @@ class DatabaseCache(BaseDatabaseCache):
         key = self.make_and_validate_key(key, version=version)
         return self._base_set("add", key, value, timeout)
 
+    def replace(self, key, value, timeout=DEFAULT_TIMEOUT, version=None):
+        key = self.make_and_validate_key(key, version=version)
+        return self._base_set("replace", key, value, timeout)
+
     def touch(self, key, timeout=DEFAULT_TIMEOUT, version=None):
         key = self.make_and_validate_key(key, version=version)
         return self._base_set("touch", key, None, timeout)
@@ -179,7 +183,9 @@ class DatabaseCache(BaseDatabaseCache):
                             [exp, key],
                         )
                     elif result and (
-                        mode == "set" or (mode == "add" and current_expires < now)
+                        mode == "set"
+                        or (mode == "add" and current_expires < now)
+                        or (mode == "replace" and current_expires >= now)
                     ):
                         cursor.execute(
                             "UPDATE %s SET %s = %%s, %s = %%s WHERE %s = %%s"
@@ -191,7 +197,7 @@ class DatabaseCache(BaseDatabaseCache):
                             ),
                             [b64encoded, exp, key],
                         )
-                    elif mode != "touch":
+                    elif mode not in ("touch", "replace"):
                         cursor.execute(
                             "INSERT INTO %s (%s, %s, %s) VALUES (%%s, %%s, %%s)"
                             % (
@@ -203,7 +209,7 @@ class DatabaseCache(BaseDatabaseCache):
                             [key, b64encoded, exp],
                         )
                     else:
-                        return False  # touch failed.
+                        return False  # touch/replace failed.
             except DatabaseError:
                 # To be threadsafe, updates/inserts are allowed to fail
                 # silently

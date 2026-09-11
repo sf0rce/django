@@ -108,6 +108,17 @@ class RedisCacheClient:
         else:
             return bool(client.set(key, value, ex=timeout, nx=True))
 
+    def replace(self, key, value, timeout):
+        client = self.get_client(key, write=True)
+        value = self._serializer.dumps(value)
+
+        if timeout == 0:
+            if ret := bool(client.set(key, value, xx=True)):
+                client.delete(key)
+            return ret
+        else:
+            return bool(client.set(key, value, ex=timeout, xx=True))
+
     def get(self, key, default):
         client = self.get_client(key)
         value = client.get(key)
@@ -195,6 +206,10 @@ class RedisCache(BaseCache):
     def add(self, key, value, timeout=DEFAULT_TIMEOUT, version=None):
         key = self.make_and_validate_key(key, version=version)
         return self._cache.add(key, value, self.get_backend_timeout(timeout))
+
+    def replace(self, key, value, timeout=DEFAULT_TIMEOUT, version=None):
+        key = self.make_and_validate_key(key, version=version)
+        return self._cache.replace(key, value, self.get_backend_timeout(timeout))
 
     def get(self, key, default=None, version=None):
         key = self.make_and_validate_key(key, version=version)
