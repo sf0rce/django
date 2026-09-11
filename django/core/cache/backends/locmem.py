@@ -49,6 +49,16 @@ class LocMemCache(BaseCache):
         self._cache.move_to_end(key, last=False)
         self._expire_info[key] = self.get_backend_timeout(timeout)
 
+    def replace(self, key, value, timeout=DEFAULT_TIMEOUT, version=None):
+        key = self.make_and_validate_key(key, version=version)
+        pickled = pickle.dumps(value, self.pickle_protocol)
+        with self._lock:
+            if self._has_expired(key):
+                self._delete(key)
+                return False
+            self._set(key, pickled, timeout)
+            return True
+
     def set(self, key, value, timeout=DEFAULT_TIMEOUT, version=None):
         key = self.make_and_validate_key(key, version=version)
         pickled = pickle.dumps(value, self.pickle_protocol)
