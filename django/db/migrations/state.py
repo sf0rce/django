@@ -705,7 +705,7 @@ class StateApps(Apps):
     def clone(self):
         """Return a clone of this registry."""
         clone = StateApps([], {})
-        clone.all_models = copy.deepcopy(self.all_models)
+        clone.all_models = defaultdict(dict, {app: dict(models) for app, models in self.all_models.items()})
 
         for app_label in self.app_configs:
             app_config = AppConfigStub(app_label)
@@ -946,17 +946,21 @@ class ModelState:
 
     def clone(self):
         """Return an exact copy of this ModelState."""
-        return self.__class__(
-            app_label=self.app_label,
-            name=self.name,
-            fields=dict(self.fields),
-            # Since options are shallow-copied here, operations such as
-            # AddIndex must replace their option (e.g 'indexes') rather
-            # than mutating it.
-            options=dict(self.options),
-            bases=self.bases,
-            managers=list(self.managers),
-        )
+        new_state = self.__class__.__new__(self.__class__)
+        new_state.app_label = self.app_label
+        new_state.name = self.name
+        new_state.fields = dict(self.fields)
+        # Since options are shallow-copied here, operations such as
+        # AddIndex must replace their option (e.g 'indexes') rather
+        # than mutating it.
+        new_state.options = dict(self.options)
+        if "indexes" not in new_state.options:
+            new_state.options["indexes"] = []
+        if "constraints" not in new_state.options:
+            new_state.options["constraints"] = []
+        new_state.bases = self.bases
+        new_state.managers = list(self.managers)
+        return new_state
 
     def render(self, apps):
         """Create a Model object from our current state into the given apps."""
