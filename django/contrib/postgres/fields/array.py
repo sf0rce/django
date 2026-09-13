@@ -133,15 +133,16 @@ class ArrayField(CheckPostgresInstalledMixin, CheckFieldDefaultMixin, Field):
 
     def get_db_prep_value(self, value, connection, prepared=False):
         if isinstance(value, (list, tuple)):
+            base_get_db_prep_value = self.base_field.get_db_prep_value
             return [
-                self.base_field.get_db_prep_value(i, connection, prepared=False)
-                for i in value
+                base_get_db_prep_value(i, connection, prepared=False) for i in value
             ]
         return value
 
     def get_db_prep_save(self, value, connection):
         if isinstance(value, (list, tuple)):
-            return [self.base_field.get_db_prep_save(i, connection) for i in value]
+            base_get_db_prep_save = self.base_field.get_db_prep_save
+            return [base_get_db_prep_save(i, connection) for i in value]
         return value
 
     def deconstruct(self):
@@ -157,14 +158,16 @@ class ArrayField(CheckPostgresInstalledMixin, CheckFieldDefaultMixin, Field):
         if isinstance(value, str):
             # Assume we're deserializing
             vals = json.loads(value)
-            value = [self.base_field.to_python(val) for val in vals]
+            base_to_python = self.base_field.to_python
+            value = [base_to_python(val) for val in vals]
         return value
 
     def _from_db_value(self, value, expression, connection):
         if value is None:
             return value
+        base_from_db_value = self.base_field.from_db_value
         return [
-            self.base_field.from_db_value(item, expression, connection)
+            base_from_db_value(item, expression, connection)
             for item in value
         ]
 
@@ -172,13 +175,17 @@ class ArrayField(CheckPostgresInstalledMixin, CheckFieldDefaultMixin, Field):
         values = []
         vals = self.value_from_object(obj)
         base_field = self.base_field
+        base_value_to_string = base_field.value_to_string
+        attname = base_field.attname
+
+        setter = AttributeSetter(attname, None)
 
         for val in vals:
             if val is None:
                 values.append(None)
             else:
-                obj = AttributeSetter(base_field.attname, val)
-                values.append(base_field.value_to_string(obj))
+                setattr(setter, attname, val)
+                values.append(base_value_to_string(setter))
         return json.dumps(values, ensure_ascii=False)
 
     def get_transform(self, name):
