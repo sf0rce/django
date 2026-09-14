@@ -77,6 +77,33 @@ class LocMemCache(BaseCache):
             self._cache.move_to_end(key, last=False)
         return new_value
 
+    def get_many(self, keys, version=None):
+        d = {}
+        with self._lock:
+            for key in keys:
+                valid_key = self.make_and_validate_key(key, version=version)
+                if self._has_expired(valid_key):
+                    self._delete(valid_key)
+                elif valid_key in self._cache:
+                    pickled = self._cache[valid_key]
+                    self._cache.move_to_end(valid_key, last=False)
+                    d[key] = pickle.loads(pickled)
+        return d
+
+    def set_many(self, data, timeout=DEFAULT_TIMEOUT, version=None):
+        with self._lock:
+            for key, value in data.items():
+                valid_key = self.make_and_validate_key(key, version=version)
+                pickled = pickle.dumps(value, self.pickle_protocol)
+                self._set(valid_key, pickled, timeout)
+        return []
+
+    def delete_many(self, keys, version=None):
+        with self._lock:
+            for key in keys:
+                valid_key = self.make_and_validate_key(key, version=version)
+                self._delete(valid_key)
+
     def has_key(self, key, version=None):
         key = self.make_and_validate_key(key, version=version)
         with self._lock:
