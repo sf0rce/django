@@ -173,12 +173,14 @@ class ArrayField(CheckPostgresInstalledMixin, CheckFieldDefaultMixin, Field):
         vals = self.value_from_object(obj)
         base_field = self.base_field
 
+        dummy_obj = AttributeSetter(base_field.attname, None)
+
         for val in vals:
             if val is None:
                 values.append(None)
             else:
-                obj = AttributeSetter(base_field.attname, val)
-                values.append(base_field.value_to_string(obj))
+                setattr(dummy_obj, base_field.attname, val)
+                values.append(base_field.value_to_string(dummy_obj))
         return json.dumps(values, ensure_ascii=False)
 
     def get_transform(self, name):
