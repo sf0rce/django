@@ -574,13 +574,13 @@ class ProjectState:
 
     def clone(self):
         """Return an exact copy of this ProjectState."""
-        new_state = ProjectState(
-            models={k: v.clone() for k, v in self.models.items()},
-            real_apps=self.real_apps,
-        )
+        new_state = ProjectState.__new__(ProjectState)
+        new_state.models = {k: v.clone() for k, v in self.models.items()}
+        new_state.real_apps = self.real_apps
         if "apps" in self.__dict__:
             new_state.apps = self.apps.clone()
         new_state.is_delayed = self.is_delayed
+        new_state._relations = None
         return new_state
 
     def clear_delayed_apps_cache(self):
@@ -704,9 +704,12 @@ class StateApps(Apps):
 
     def clone(self):
         """Return a clone of this registry."""
-        clone = StateApps([], {})
-        clone.all_models = copy.deepcopy(self.all_models)
+        clone = StateApps.__new__(StateApps)
+        clone.all_models = defaultdict(dict)
+        for app_label, app_models in self.all_models.items():
+            clone.all_models[app_label] = dict(app_models)
 
+        clone.app_configs = {}
         for app_label in self.app_configs:
             app_config = AppConfigStub(app_label)
             app_config.apps = clone
@@ -715,6 +718,12 @@ class StateApps(Apps):
 
         # No need to actually clone them, they'll never change
         clone.real_models = self.real_models
+        clone.apps_ready = self.apps_ready
+        clone.models_ready = self.models_ready
+        clone.ready = self.ready
+        clone.ready_event = self.ready_event
+        clone.loading = self.loading
+        clone._pending_operations = defaultdict(list)
         return clone
 
     def register_model(self, app_label, model):
@@ -946,17 +955,20 @@ class ModelState:
 
     def clone(self):
         """Return an exact copy of this ModelState."""
-        return self.__class__(
-            app_label=self.app_label,
-            name=self.name,
-            fields=dict(self.fields),
-            # Since options are shallow-copied here, operations such as
-            # AddIndex must replace their option (e.g 'indexes') rather
-            # than mutating it.
-            options=dict(self.options),
-            bases=self.bases,
-            managers=list(self.managers),
-        )
+        # Bypass __init__ overhead since we know the exact attributes.
+        clone = self.__class__.__new__(self.__class__)
+        clone.app_label = self.app_label
+        clone.name = self.name
+        clone.fields = dict(self.fields)
+        # Since options are shallow-copied here, operations such as
+        # AddIndex must replace their option (e.g 'indexes') rather
+        # than mutating it.
+        clone.options = dict(self.options)
+        clone.options.setdefault("indexes", [])
+        clone.options.setdefault("constraints", [])
+        clone.bases = self.bases
+        clone.managers = list(self.managers)
+        return clone
 
     def render(self, apps):
         """Create a Model object from our current state into the given apps."""
