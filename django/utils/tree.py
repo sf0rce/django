@@ -33,8 +33,10 @@ class Node:
         __init__() with a signature that conflicts with the one defined in
         Node.__init__().
         """
-        obj = Node(children, connector or cls.default, negated)
-        obj.__class__ = cls
+        obj = cls.__new__(cls)
+        obj.children = children[:] if children else []
+        obj.connector = connector or cls.default
+        obj.negated = negated
         return obj
 
     def __str__(self):
@@ -45,14 +47,18 @@ class Node:
         return "<%s: %s>" % (self.__class__.__name__, self)
 
     def __copy__(self):
-        obj = self.create(connector=self.connector, negated=self.negated)
-        obj.children = self.children  # Don't [:] as .__init__() via .create() does.
+        obj = self.__class__.__new__(self.__class__)
+        obj.connector = self.connector
+        obj.negated = self.negated
+        obj.children = self.children
         return obj
 
     copy = __copy__
 
     def __deepcopy__(self, memodict):
-        obj = self.create(connector=self.connector, negated=self.negated)
+        obj = self.__class__.__new__(self.__class__)
+        obj.connector = self.connector
+        obj.negated = self.negated
         obj.children = copy.deepcopy(self.children, memodict)
         return obj
 

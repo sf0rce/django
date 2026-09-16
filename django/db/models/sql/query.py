@@ -41,7 +41,7 @@ from django.db.models.query_utils import (
     refs_expression,
 )
 from django.db.models.sql.constants import INNER, LOUTER, ORDER_DIR, SINGLE
-from django.db.models.sql.datastructures import BaseTable, Empty, Join, MultiJoin
+from django.db.models.sql.datastructures import BaseTable, Join, MultiJoin
 from django.db.models.sql.where import AND, OR, ExtraWhere, NothingNode, WhereNode
 from django.utils.deprecation import RemovedInDjango2028Warning
 from django.utils.functional import cached_property
@@ -390,8 +390,7 @@ class Query(BaseExpression):
         Return a copy of the current Query. A lightweight alternative to
         deepcopy().
         """
-        obj = Empty()
-        obj.__class__ = self.__class__
+        obj = self.__class__.__new__(self.__class__)
         # Copy references to everything.
         obj.__dict__ = self.__dict__.copy()
         # Clone attributes that can't use shallow copy.
