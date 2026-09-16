@@ -1,0 +1,1 @@
+## Milton optimizations\nReplaced `copy.deepcopy()` and costly `__init__` initialisation with lightweight allocations in `django/db/migrations/state.py` (specifically `ModelState.clone`, `StateApps.clone` and `ProjectState.clone`).
