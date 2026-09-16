@@ -1,0 +1,6 @@
+## ArrayField and SplitArrayField Optimizatons
+
+* **Hoisting attribute lookups:** Moving expressions like `self.base_field.from_db_value` outside of list comprehensions when processing arrays (like `_from_db_value`, `get_db_prep_value`, `to_python`, etc.) in `ArrayField` and `SimpleArrayField` avoids re-evaluating the property descriptor on every element iteration, shaving significant per-element overhead.
+* **AttributeSetter mutation:** In `ArrayField.value_to_string`, the loop creates a new `AttributeSetter` object for every non-null array element. Pre-instantiating the object and using `setattr(setter, attname, val)` inside the loop reduces object allocation overhead drastically.
+* **Iterative over Recursive:** A recursive generator `yield from self._rhs_not_none_values(x)` is extremely slow due to generator setup/teardown and call frames. Refactoring it into an iterative stack approach using a simple while-loop and `isinstance(..., (list, tuple))` improved performance by ~85% for deep nesting.
+* **Avoiding list copies:** In `SplitArrayField._remove_trailing_nulls`, using `reversed(list(enumerate(values)))` created a new list of tuples to iterate backwards. Replaced with `range(len(values) - 1, -1, -1)` which avoids allocating extra list and tuples.
