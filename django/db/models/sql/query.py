@@ -418,7 +418,7 @@ class Query(BaseExpression):
             obj.extra_select_mask = self.extra_select_mask.copy()
         if self._extra_select_cache is not None:
             obj._extra_select_cache = self._extra_select_cache.copy()
-        if self.select_related is not False:
+        if self.select_related is not False and isinstance(self.select_related, dict):
             # Use deepcopy because select_related stores fields in nested
             # dicts.
             obj.select_related = copy.deepcopy(obj.select_related)
