@@ -704,8 +704,12 @@ class StateApps(Apps):
 
     def clone(self):
         """Return a clone of this registry."""
+        from collections import defaultdict
+
         clone = StateApps([], {})
-        clone.all_models = copy.deepcopy(self.all_models)
+        clone.all_models = defaultdict(dict)
+        for app_label, app_models in self.all_models.items():
+            clone.all_models[app_label] = app_models.copy()
 
         for app_label in self.app_configs:
             app_config = AppConfigStub(app_label)
