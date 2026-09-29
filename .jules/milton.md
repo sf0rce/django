@@ -1,0 +1,3 @@
+## 2026-09-24 - Optimize Node creation and WhereNode cloning
+**Learning:** `Node.create()` previously instantiated `Node(...)` (calling `Node.__init__`) and then reassigned `obj.__class__ = cls`. Using `object.__new__(cls)` directly bypasses `Node.__init__` and `__class__` reassignment overhead. Additionally, list comprehensions in `WhereNode.clone()` and `replace_expressions()` eliminate 200,000 method call overheads per 100,000 clones.
+**Action:** Use `object.__new__(cls)` when instantiating subclasses that bypass `__init__`, and prefer list comprehensions over `append()` loops in ORM AST node clones.
