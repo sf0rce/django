@@ -502,7 +502,8 @@ class ModelState:
         return state
 
     def __del__(self):
-        self.fields_cache.clear()
+        if "fields_cache" in self.__dict__:
+            self.fields_cache.clear()
 
 
 class Model(AltersData, metaclass=ModelBase):
