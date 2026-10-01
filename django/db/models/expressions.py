@@ -1369,6 +1369,19 @@ class Col(Expression):
         sql = ".".join(map(compiler.quote_name, identifiers))
         return sql, ()
 
+    @cached_property
+    def identity(self):
+        args, kwargs = self._constructor_args
+        alias = args[0] if len(args) > 0 else kwargs.get("alias")
+        target = args[1] if len(args) > 1 else kwargs.get("target")
+        output_field = args[2] if len(args) > 2 else kwargs.get("output_field", None)
+        return (
+            self.__class__,
+            ("alias", self._identity(alias)),
+            ("target", self._identity(target)),
+            ("output_field", self._identity(output_field)),
+        )
+
     def relabeled_clone(self, relabels):
         if self.alias is None:
             return self
