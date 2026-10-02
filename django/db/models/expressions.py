@@ -1165,6 +1165,19 @@ class Value(Expression):
         super().__init__(output_field=output_field)
         self.value = value
 
+    @cached_property
+    def identity(self):
+        if self.__class__ is not Value:
+            return super().identity
+        args, kwargs = self._constructor_args
+        value = args[0] if args else kwargs["value"]
+        output_field = args[1] if len(args) > 1 else kwargs.get("output_field", None)
+        return (
+            self.__class__,
+            ("value", self._identity(value)),
+            ("output_field", self._identity(output_field)),
+        )
+
     def __repr__(self):
         return f"{self.__class__.__name__}({self.value!r})"
 
@@ -1358,6 +1371,21 @@ class Col(Expression):
         super().__init__(output_field=output_field)
         self.alias, self.target = alias, target
 
+    @cached_property
+    def identity(self):
+        if self.__class__ is not Col:
+            return super().identity
+        args, kwargs = self._constructor_args
+        alias = args[0] if args else kwargs["alias"]
+        target = args[1] if len(args) > 1 else kwargs["target"]
+        output_field = args[2] if len(args) > 2 else kwargs.get("output_field", None)
+        return (
+            self.__class__,
+            ("alias", self._identity(alias)),
+            ("target", self._identity(target)),
+            ("output_field", self._identity(output_field)),
+        )
+
     def __repr__(self):
         alias, target = self.alias, self.target
         identifiers = (alias, str(target)) if alias else (str(target),)
@@ -1393,6 +1421,23 @@ class ColPairs(Expression):
         self.alias = alias
         self.targets = targets
         self.sources = sources
+
+    @cached_property
+    def identity(self):
+        if self.__class__ is not ColPairs:
+            return super().identity
+        args, kwargs = self._constructor_args
+        alias = args[0] if args else kwargs["alias"]
+        targets = args[1] if len(args) > 1 else kwargs["targets"]
+        sources = args[2] if len(args) > 2 else kwargs["sources"]
+        output_field = args[3] if len(args) > 3 else kwargs.get("output_field", None)
+        return (
+            self.__class__,
+            ("alias", self._identity(alias)),
+            ("targets", self._identity(targets)),
+            ("sources", self._identity(sources)),
+            ("output_field", self._identity(output_field)),
+        )
 
     def __len__(self):
         return len(self.targets)
@@ -1453,6 +1498,19 @@ class Ref(Expression):
     def __init__(self, refs, source):
         super().__init__()
         self.refs, self.source = refs, source
+
+    @cached_property
+    def identity(self):
+        if self.__class__ is not Ref:
+            return super().identity
+        args, kwargs = self._constructor_args
+        refs = args[0] if args else kwargs["refs"]
+        source = args[1] if len(args) > 1 else kwargs["source"]
+        return (
+            self.__class__,
+            ("refs", self._identity(refs)),
+            ("source", self._identity(source)),
+        )
 
     def __repr__(self):
         return "{}({}, {})".format(self.__class__.__name__, self.refs, self.source)
@@ -1554,6 +1612,19 @@ class ExpressionWrapper(SQLiteNumericMixin, Expression):
     def __init__(self, expression, output_field):
         super().__init__(output_field=output_field)
         self.expression = expression
+
+    @cached_property
+    def identity(self):
+        if self.__class__ is not ExpressionWrapper:
+            return super().identity
+        args, kwargs = self._constructor_args
+        expression = args[0] if args else kwargs["expression"]
+        output_field = args[1] if len(args) > 1 else kwargs.get("output_field", None)
+        return (
+            self.__class__,
+            ("expression", self._identity(expression)),
+            ("output_field", self._identity(output_field)),
+        )
 
     def set_source_expressions(self, exprs):
         self.expression = exprs[0]
@@ -1929,6 +2000,23 @@ class OrderBy(Expression):
         if not hasattr(expression, "resolve_expression"):
             raise ValueError("expression must be an expression type")
         self.expression = expression
+
+    @cached_property
+    def identity(self):
+        if self.__class__ is not OrderBy:
+            return super().identity
+        args, kwargs = self._constructor_args
+        expression = args[0] if args else kwargs["expression"]
+        descending = args[1] if len(args) > 1 else kwargs.get("descending", False)
+        nulls_first = args[2] if len(args) > 2 else kwargs.get("nulls_first", None)
+        nulls_last = args[3] if len(args) > 3 else kwargs.get("nulls_last", None)
+        return (
+            self.__class__,
+            ("expression", self._identity(expression)),
+            ("descending", self._identity(descending)),
+            ("nulls_first", self._identity(nulls_first)),
+            ("nulls_last", self._identity(nulls_last)),
+        )
 
     def __repr__(self):
         return "{}({}, descending={})".format(
