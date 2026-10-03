@@ -1236,6 +1236,17 @@ class Value(Expression):
         if isinstance(self.value, UUID):
             return fields.UUIDField()
 
+    @cached_property
+    def identity(self):
+        args, kwargs = self._constructor_args
+        val = args[0] if args else kwargs.get("value")
+        out = args[1] if len(args) > 1 else kwargs.get("output_field")
+        return (
+            self.__class__,
+            ("value", self._identity(val)),
+            ("output_field", self._identity(out)),
+        )
+
     @property
     def empty_result_set_value(self):
         return self.value
@@ -1379,6 +1390,24 @@ class Col(Expression):
     def get_group_by_cols(self):
         return [self]
 
+    @cached_property
+    def identity(self):
+        if hasattr(self, "_constructor_args"):
+            args, kwargs = self._constructor_args
+            alias = args[0] if args else kwargs.get("alias", self.alias)
+            target = args[1] if len(args) > 1 else kwargs.get("target", self.target)
+            out = args[2] if len(args) > 2 else kwargs.get("output_field")
+        else:
+            alias = self.alias
+            target = self.target
+            out = None if self.output_field == self.target else self.output_field
+        return (
+            self.__class__,
+            ("alias", self._identity(alias)),
+            ("target", self._identity(target)),
+            ("output_field", self._identity(out)),
+        )
+
     def get_db_converters(self, connection):
         if self.target == self.output_field:
             return self.output_field.get_db_converters(connection)
@@ -1440,6 +1469,29 @@ class ColPairs(Expression):
     def resolve_expression(self, *args, **kwargs):
         return self
 
+    @cached_property
+    def identity(self):
+        if hasattr(self, "_constructor_args"):
+            args, kwargs = self._constructor_args
+            alias = args[0] if args else kwargs.get("alias", self.alias)
+            targets = args[1] if len(args) > 1 else kwargs.get("targets", self.targets)
+            sources = args[2] if len(args) > 2 else kwargs.get("sources", self.sources)
+            out = args[3] if len(args) > 3 else kwargs.get("output_field")
+        else:
+            alias, targets, sources, out = (
+                self.alias,
+                self.targets,
+                self.sources,
+                self.output_field,
+            )
+        return (
+            self.__class__,
+            ("alias", self._identity(alias)),
+            ("targets", self._identity(targets)),
+            ("sources", self._identity(sources)),
+            ("output_field", self._identity(out)),
+        )
+
     def select_format(self, compiler, sql, params):
         return sql, params
 
@@ -1480,6 +1532,20 @@ class Ref(Expression):
 
     def as_sql(self, compiler, connection):
         return connection.ops.quote_name(self.refs), ()
+
+    @cached_property
+    def identity(self):
+        if hasattr(self, "_constructor_args"):
+            args, kwargs = self._constructor_args
+            refs = args[0] if args else kwargs.get("refs", self.refs)
+            source = args[1] if len(args) > 1 else kwargs.get("source", self.source)
+        else:
+            refs, source = self.refs, self.source
+        return (
+            self.__class__,
+            ("refs", self._identity(refs)),
+            ("source", self._identity(source)),
+        )
 
     def get_group_by_cols(self):
         return [self]
@@ -1575,6 +1641,20 @@ class ExpressionWrapper(SQLiteNumericMixin, Expression):
 
     def __repr__(self):
         return "{}({})".format(self.__class__.__name__, self.expression)
+
+    @cached_property
+    def identity(self):
+        if hasattr(self, "_constructor_args"):
+            args, kwargs = self._constructor_args
+            expr = args[0] if args else kwargs.get("expression", self.expression)
+            out = args[1] if len(args) > 1 else kwargs.get("output_field")
+        else:
+            expr, out = self.expression, self._output_field_or_none
+        return (
+            self.__class__,
+            ("expression", self._identity(expr)),
+            ("output_field", self._identity(out)),
+        )
 
     @property
     def allowed_default(self):
@@ -2012,6 +2092,29 @@ class OrderBy(Expression):
 
     def asc(self):
         self.descending = False
+
+    @cached_property
+    def identity(self):
+        if hasattr(self, "_constructor_args"):
+            args, kwargs = self._constructor_args
+            expr = args[0] if args else kwargs.get("expression", self.expression)
+            desc = args[1] if len(args) > 1 else kwargs.get("descending", False)
+            nf = args[2] if len(args) > 2 else kwargs.get("nulls_first", None)
+            nl = args[3] if len(args) > 3 else kwargs.get("nulls_last", None)
+        else:
+            expr, desc, nf, nl = (
+                self.expression,
+                self.descending,
+                self.nulls_first,
+                self.nulls_last,
+            )
+        return (
+            self.__class__,
+            ("expression", self._identity(expr)),
+            ("descending", self._identity(desc)),
+            ("nulls_first", self._identity(nf)),
+            ("nulls_last", self._identity(nl)),
+        )
 
     def desc(self):
         self.descending = True
