@@ -7,7 +7,6 @@ databases). The abstraction barrier only works one way: this module has to know
 all about the internals of models in order to get the information it needs.
 """
 
-import copy
 import difflib
 import functools
 import sys
@@ -41,7 +40,7 @@ from django.db.models.query_utils import (
     refs_expression,
 )
 from django.db.models.sql.constants import INNER, LOUTER, ORDER_DIR, SINGLE
-from django.db.models.sql.datastructures import BaseTable, Empty, Join, MultiJoin
+from django.db.models.sql.datastructures import BaseTable, Join, MultiJoin
 from django.db.models.sql.where import AND, OR, ExtraWhere, NothingNode, WhereNode
 from django.utils.deprecation import RemovedInDjango2028Warning
 from django.utils.functional import cached_property
@@ -67,6 +66,12 @@ FORBIDDEN_ALIAS_PATTERN = _lazy_re_compile(
 # Inspired from
 # https://www.postgresql.org/docs/current/sql-syntax-lexical.html#SQL-SYNTAX-IDENTIFIERS
 EXPLAIN_OPTIONS_PATTERN = _lazy_re_compile(r"[\w-]+")
+
+
+def _copy_select_related(d):
+    if isinstance(d, dict):
+        return {k: _copy_select_related(v) for k, v in d.items()}
+    return d
 
 
 def get_field_names_from_opts(opts):
@@ -390,8 +395,7 @@ class Query(BaseExpression):
         Return a copy of the current Query. A lightweight alternative to
         deepcopy().
         """
-        obj = Empty()
-        obj.__class__ = self.__class__
+        obj = object.__new__(self.__class__)
         # Copy references to everything.
         obj.__dict__ = self.__dict__.copy()
         # Clone attributes that can't use shallow copy.
@@ -418,10 +422,8 @@ class Query(BaseExpression):
             obj.extra_select_mask = self.extra_select_mask.copy()
         if self._extra_select_cache is not None:
             obj._extra_select_cache = self._extra_select_cache.copy()
-        if self.select_related is not False:
-            # Use deepcopy because select_related stores fields in nested
-            # dicts.
-            obj.select_related = copy.deepcopy(obj.select_related)
+        if isinstance(self.select_related, dict):
+            obj.select_related = _copy_select_related(self.select_related)
         if "subq_aliases" in self.__dict__:
             obj.subq_aliases = self.subq_aliases.copy()
         obj.used_aliases = self.used_aliases.copy()
