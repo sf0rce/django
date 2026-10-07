@@ -1,6 +1,7 @@
 import copy
 import datetime
 import functools
+import inspect
 from collections import defaultdict
 from decimal import Decimal
 from enum import Enum
@@ -525,6 +526,17 @@ class Expression(BaseExpression, Combinable):
     def _constructor_signature(cls):
         return signature(cls.__init__)
 
+    @classproperty
+    @functools.lru_cache(maxsize=128)
+    def _constructor_params(cls):
+        sig = signature(cls.__init__)
+        params = []
+        for name, param in sig.parameters.items():
+            if name == "self":
+                continue
+            params.append((name, param.default, param.kind))
+        return params
+
     @classmethod
     def _identity(cls, value):
         if isinstance(value, tuple):
@@ -540,17 +552,27 @@ class Expression(BaseExpression, Combinable):
     @cached_property
     def identity(self):
         args, kwargs = self._constructor_args
-        signature = self._constructor_signature.bind_partial(self, *args, **kwargs)
-        signature.apply_defaults()
-        arguments = iter(signature.arguments.items())
-        next(arguments)
+        params = self._constructor_params
         identity = [self.__class__]
-        for arg, value in arguments:
-            # If __init__() makes use of *args or **kwargs captures `value`
-            # will respectively be a tuple or a dict that must have its
-            # constituents unpacked (mainly if contain Field instances).
-            value = self._identity(value)
-            identity.append((arg, value))
+        pos = 0
+        num_args = len(args)
+        for name, default, kind in params:
+            if kind == inspect.Parameter.VAR_POSITIONAL:
+                value = args[pos:]
+                pos = num_args
+            elif kind == inspect.Parameter.VAR_KEYWORD:
+                value = {
+                    k: v for k, v in kwargs.items() if k not in {p[0] for p in params}
+                }
+            else:
+                if pos < num_args:
+                    value = args[pos]
+                    pos += 1
+                elif name in kwargs:
+                    value = kwargs[name]
+                else:
+                    value = default
+            identity.append((name, self._identity(value)))
         return tuple(identity)
 
     def __eq__(self, other):
@@ -1236,6 +1258,17 @@ class Value(Expression):
         if isinstance(self.value, UUID):
             return fields.UUIDField()
 
+    @cached_property
+    def identity(self):
+        args, kwargs = self._constructor_args
+        value = args[0] if args else kwargs.get("value")
+        output_field = kwargs.get("output_field", args[1] if len(args) > 1 else None)
+        return (
+            self.__class__,
+            ("value", self._identity(value)),
+            ("output_field", self._identity(output_field)),
+        )
+
     @property
     def empty_result_set_value(self):
         return self.value
@@ -1379,6 +1412,19 @@ class Col(Expression):
     def get_group_by_cols(self):
         return [self]
 
+    @cached_property
+    def identity(self):
+        args, kwargs = self._constructor_args
+        alias = args[0] if args else kwargs.get("alias")
+        target = kwargs.get("target", args[1] if len(args) > 1 else None)
+        output_field = kwargs.get("output_field", args[2] if len(args) > 2 else None)
+        return (
+            self.__class__,
+            ("alias", self._identity(alias)),
+            ("target", self._identity(target)),
+            ("output_field", self._identity(output_field)),
+        )
+
     def get_db_converters(self, connection):
         if self.target == self.output_field:
             return self.output_field.get_db_converters(connection)
@@ -1440,6 +1486,21 @@ class ColPairs(Expression):
     def resolve_expression(self, *args, **kwargs):
         return self
 
+    @cached_property
+    def identity(self):
+        args, kwargs = self._constructor_args
+        alias = args[0] if args else kwargs.get("alias")
+        targets = kwargs.get("targets", args[1] if len(args) > 1 else None)
+        sources = kwargs.get("sources", args[2] if len(args) > 2 else None)
+        output_field = kwargs.get("output_field", args[3] if len(args) > 3 else None)
+        return (
+            self.__class__,
+            ("alias", self._identity(alias)),
+            ("targets", self._identity(targets)),
+            ("sources", self._identity(sources)),
+            ("output_field", self._identity(output_field)),
+        )
+
     def select_format(self, compiler, sql, params):
         return sql, params
 
@@ -1480,6 +1541,17 @@ class Ref(Expression):
 
     def as_sql(self, compiler, connection):
         return connection.ops.quote_name(self.refs), ()
+
+    @cached_property
+    def identity(self):
+        args, kwargs = self._constructor_args
+        refs = args[0] if args else kwargs.get("refs")
+        source = kwargs.get("source", args[1] if len(args) > 1 else None)
+        return (
+            self.__class__,
+            ("refs", self._identity(refs)),
+            ("source", self._identity(source)),
+        )
 
     def get_group_by_cols(self):
         return [self]
@@ -1575,6 +1647,17 @@ class ExpressionWrapper(SQLiteNumericMixin, Expression):
 
     def __repr__(self):
         return "{}({})".format(self.__class__.__name__, self.expression)
+
+    @cached_property
+    def identity(self):
+        args, kwargs = self._constructor_args
+        expression = args[0] if args else kwargs.get("expression")
+        output_field = kwargs.get("output_field", args[1] if len(args) > 1 else None)
+        return (
+            self.__class__,
+            ("expression", self._identity(expression)),
+            ("output_field", self._identity(output_field)),
+        )
 
     @property
     def allowed_default(self):
@@ -2012,6 +2095,21 @@ class OrderBy(Expression):
 
     def asc(self):
         self.descending = False
+
+    @cached_property
+    def identity(self):
+        args, kwargs = self._constructor_args
+        expression = args[0] if args else kwargs.get("expression")
+        descending = kwargs.get("descending", args[1] if len(args) > 1 else False)
+        nulls_first = kwargs.get("nulls_first", args[2] if len(args) > 2 else None)
+        nulls_last = kwargs.get("nulls_last", args[3] if len(args) > 3 else None)
+        return (
+            self.__class__,
+            ("expression", self._identity(expression)),
+            ("descending", self._identity(descending)),
+            ("nulls_first", self._identity(nulls_first)),
+            ("nulls_last", self._identity(nulls_last)),
+        )
 
     def desc(self):
         self.descending = True
