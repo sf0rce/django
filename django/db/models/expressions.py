@@ -1,4 +1,3 @@
-import copy
 import datetime
 import functools
 from collections import defaultdict
@@ -440,8 +439,13 @@ class BaseExpression:
             refs |= expr.get_refs()
         return refs
 
+    def __copy__(self):
+        clone = object.__new__(self.__class__)
+        clone.__dict__.update(self.__dict__)
+        return clone
+
     def copy(self):
-        return copy.copy(self)
+        return self.__copy__()
 
     def prefix_references(self, prefix):
         clone = self.copy()
@@ -939,8 +943,13 @@ class F(Combinable):
     def __hash__(self):
         return hash(self.name)
 
+    def __copy__(self):
+        clone = object.__new__(self.__class__)
+        clone.__dict__.update(self.__dict__)
+        return clone
+
     def copy(self):
-        return copy.copy(self)
+        return self.__copy__()
 
 
 class ResolvedOuterRef(F):
