@@ -525,6 +525,23 @@ class Expression(BaseExpression, Combinable):
     def _constructor_signature(cls):
         return signature(cls.__init__)
 
+    @classproperty
+    @functools.lru_cache(maxsize=128)
+    def _constructor_params(cls):
+        import inspect
+
+        params = list(signature(cls.__init__).parameters.values())[1:]
+        param_specs = []
+        for p in params:
+            if p.kind in (
+                inspect.Parameter.VAR_POSITIONAL,
+                inspect.Parameter.VAR_KEYWORD,
+            ):
+                return None
+            default = None if p.default is inspect.Parameter.empty else p.default
+            param_specs.append((p.name, default))
+        return param_specs
+
     @classmethod
     def _identity(cls, value):
         if isinstance(value, tuple):
@@ -540,17 +557,32 @@ class Expression(BaseExpression, Combinable):
     @cached_property
     def identity(self):
         args, kwargs = self._constructor_args
-        signature = self._constructor_signature.bind_partial(self, *args, **kwargs)
-        signature.apply_defaults()
-        arguments = iter(signature.arguments.items())
-        next(arguments)
-        identity = [self.__class__]
-        for arg, value in arguments:
-            # If __init__() makes use of *args or **kwargs captures `value`
-            # will respectively be a tuple or a dict that must have its
-            # constituents unpacked (mainly if contain Field instances).
-            value = self._identity(value)
-            identity.append((arg, value))
+        cls = self.__class__
+        specs = cls._constructor_params
+        if specs is None:
+            signature = self._constructor_signature.bind_partial(self, *args, **kwargs)
+            signature.apply_defaults()
+            arguments = iter(signature.arguments.items())
+            next(arguments)
+            identity = [cls]
+            for arg, value in arguments:
+                # If __init__() makes use of *args or **kwargs captures `value`
+                # will respectively be a tuple or a dict that must have its
+                # constituents unpacked (mainly if contain Field instances).
+                value = self._identity(value)
+                identity.append((arg, value))
+            return tuple(identity)
+
+        identity = [cls]
+        num_args = len(args)
+        for i, (name, default) in enumerate(specs):
+            if i < num_args:
+                val = args[i]
+            elif name in kwargs:
+                val = kwargs[name]
+            else:
+                val = default
+            identity.append((name, self._identity(val)))
         return tuple(identity)
 
     def __eq__(self, other):
@@ -1240,6 +1272,19 @@ class Value(Expression):
     def empty_result_set_value(self):
         return self.value
 
+    @cached_property
+    def identity(self):
+        if self.__class__ is not Value:
+            return super().identity
+        args, kwargs = self._constructor_args
+        value = args[0] if len(args) > 0 else kwargs["value"]
+        output_field = args[1] if len(args) > 1 else kwargs.get("output_field", None)
+        return (
+            Value,
+            ("value", self._identity(value)),
+            ("output_field", self._identity(output_field)),
+        )
+
 
 @deconstructible(path="django.db.models.JSONNull")
 class JSONNull(Value):
@@ -1386,6 +1431,21 @@ class Col(Expression):
             connection
         ) + self.target.get_db_converters(connection)
 
+    @cached_property
+    def identity(self):
+        if self.__class__ is not Col:
+            return super().identity
+        args, kwargs = self._constructor_args
+        alias = args[0] if len(args) > 0 else kwargs["alias"]
+        target = args[1] if len(args) > 1 else kwargs["target"]
+        output_field = args[2] if len(args) > 2 else kwargs.get("output_field", None)
+        return (
+            Col,
+            ("alias", self._identity(alias)),
+            ("target", self._identity(target)),
+            ("output_field", self._identity(output_field)),
+        )
+
 
 class ColPairs(Expression):
     def __init__(self, alias, targets, sources, output_field):
@@ -1443,6 +1503,23 @@ class ColPairs(Expression):
     def select_format(self, compiler, sql, params):
         return sql, params
 
+    @cached_property
+    def identity(self):
+        if self.__class__ is not ColPairs:
+            return super().identity
+        args, kwargs = self._constructor_args
+        alias = args[0] if len(args) > 0 else kwargs["alias"]
+        targets = args[1] if len(args) > 1 else kwargs["targets"]
+        sources = args[2] if len(args) > 2 else kwargs["sources"]
+        output_field = args[3] if len(args) > 3 else kwargs["output_field"]
+        return (
+            ColPairs,
+            ("alias", self._identity(alias)),
+            ("targets", self._identity(targets)),
+            ("sources", self._identity(sources)),
+            ("output_field", self._identity(output_field)),
+        )
+
 
 class Ref(Expression):
     """
@@ -1483,6 +1560,19 @@ class Ref(Expression):
 
     def get_group_by_cols(self):
         return [self]
+
+    @cached_property
+    def identity(self):
+        if self.__class__ is not Ref:
+            return super().identity
+        args, kwargs = self._constructor_args
+        refs = args[0] if len(args) > 0 else kwargs["refs"]
+        source = args[1] if len(args) > 1 else kwargs["source"]
+        return (
+            Ref,
+            ("refs", self._identity(refs)),
+            ("source", self._identity(source)),
+        )
 
 
 class ExpressionList(Func):
@@ -1579,6 +1669,19 @@ class ExpressionWrapper(SQLiteNumericMixin, Expression):
     @property
     def allowed_default(self):
         return self.expression.allowed_default
+
+    @cached_property
+    def identity(self):
+        if self.__class__ is not ExpressionWrapper:
+            return super().identity
+        args, kwargs = self._constructor_args
+        expression = args[0] if len(args) > 0 else kwargs["expression"]
+        output_field = args[1] if len(args) > 1 else kwargs["output_field"]
+        return (
+            ExpressionWrapper,
+            ("expression", self._identity(expression)),
+            ("output_field", self._identity(output_field)),
+        )
 
 
 class NegatedExpression(ExpressionWrapper):
@@ -2015,6 +2118,23 @@ class OrderBy(Expression):
 
     def desc(self):
         self.descending = True
+
+    @cached_property
+    def identity(self):
+        if self.__class__ is not OrderBy:
+            return super().identity
+        args, kwargs = self._constructor_args
+        expression = args[0] if len(args) > 0 else kwargs["expression"]
+        descending = args[1] if len(args) > 1 else kwargs.get("descending", False)
+        nulls_first = args[2] if len(args) > 2 else kwargs.get("nulls_first", None)
+        nulls_last = args[3] if len(args) > 3 else kwargs.get("nulls_last", None)
+        return (
+            OrderBy,
+            ("expression", self._identity(expression)),
+            ("descending", self._identity(descending)),
+            ("nulls_first", self._identity(nulls_first)),
+            ("nulls_last", self._identity(nulls_last)),
+        )
 
 
 class Window(SQLiteNumericMixin, Expression):
