@@ -525,6 +525,19 @@ class Expression(BaseExpression, Combinable):
     def _constructor_signature(cls):
         return signature(cls.__init__)
 
+    @classproperty
+    @functools.lru_cache(maxsize=128)
+    def _constructor_params(cls):
+        params = []
+        for param in list(signature(cls.__init__).parameters.values())[1:]:
+            if param.kind in (
+                param.VAR_POSITIONAL,
+                param.VAR_KEYWORD,
+            ):
+                return None
+            params.append((param.name, param.default))
+        return tuple(params)
+
     @classmethod
     def _identity(cls, value):
         if isinstance(value, tuple):
@@ -539,12 +552,29 @@ class Expression(BaseExpression, Combinable):
 
     @cached_property
     def identity(self):
+        cls = self.__class__
+        params = cls._constructor_params
+        if params is not None:
+            args, kwargs = self._constructor_args
+            identity = [cls]
+            _identity = self._identity
+            n_args = len(args)
+            for i, (name, default) in enumerate(params):
+                if i < n_args:
+                    val = args[i]
+                elif name in kwargs:
+                    val = kwargs[name]
+                else:
+                    val = default
+                identity.append((name, _identity(val)))
+            return tuple(identity)
+
         args, kwargs = self._constructor_args
         signature = self._constructor_signature.bind_partial(self, *args, **kwargs)
         signature.apply_defaults()
         arguments = iter(signature.arguments.items())
         next(arguments)
-        identity = [self.__class__]
+        identity = [cls]
         for arg, value in arguments:
             # If __init__() makes use of *args or **kwargs captures `value`
             # will respectively be a tuple or a dict that must have its
