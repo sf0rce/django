@@ -1,6 +1,7 @@
 import copy
 import datetime
 import functools
+import inspect
 from collections import defaultdict
 from decimal import Decimal
 from enum import Enum
@@ -537,20 +538,50 @@ class Expression(BaseExpression, Combinable):
             return type(value)
         return make_hashable(value)
 
+    @classproperty
+    @functools.lru_cache(maxsize=128)
+    def _constructor_params(cls):
+        params = list(cls._constructor_signature.parameters.values())[1:]
+        has_var = any(
+            p.kind in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD)
+            for p in params
+        )
+        param_list = [
+            (p.name, p.default)
+            for p in params
+            if p.kind
+            not in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD)
+        ]
+        return param_list, has_var
+
     @cached_property
     def identity(self):
         args, kwargs = self._constructor_args
-        signature = self._constructor_signature.bind_partial(self, *args, **kwargs)
-        signature.apply_defaults()
-        arguments = iter(signature.arguments.items())
-        next(arguments)
+        params, has_var = self._constructor_params
+        if has_var:
+            signature = self._constructor_signature.bind_partial(self, *args, **kwargs)
+            signature.apply_defaults()
+            arguments = iter(signature.arguments.items())
+            next(arguments)
+            identity = [self.__class__]
+            for arg, value in arguments:
+                # If __init__() makes use of *args or **kwargs captures `value`
+                # will respectively be a tuple or a dict that must have its
+                # constituents unpacked (mainly if contain Field instances).
+                value = self._identity(value)
+                identity.append((arg, value))
+            return tuple(identity)
+
         identity = [self.__class__]
-        for arg, value in arguments:
-            # If __init__() makes use of *args or **kwargs captures `value`
-            # will respectively be a tuple or a dict that must have its
-            # constituents unpacked (mainly if contain Field instances).
-            value = self._identity(value)
-            identity.append((arg, value))
+        args_len = len(args)
+        for i, (param_name, default) in enumerate(params):
+            if i < args_len:
+                val = args[i]
+            elif param_name in kwargs:
+                val = kwargs[param_name]
+            else:
+                val = default
+            identity.append((param_name, self._identity(val)))
         return tuple(identity)
 
     def __eq__(self, other):
@@ -1165,6 +1196,19 @@ class Value(Expression):
         super().__init__(output_field=output_field)
         self.value = value
 
+    @cached_property
+    def identity(self):
+        if self.__class__ is not Value:
+            return super().identity
+        args, kwargs = self._constructor_args
+        val = args[0] if args else kwargs["value"]
+        of = kwargs.get("output_field", args[1] if len(args) > 1 else None)
+        return (
+            Value,
+            ("value", self._identity(val)),
+            ("output_field", self._identity(of)),
+        )
+
     def __repr__(self):
         return f"{self.__class__.__name__}({self.value!r})"
 
@@ -1358,6 +1402,21 @@ class Col(Expression):
         super().__init__(output_field=output_field)
         self.alias, self.target = alias, target
 
+    @cached_property
+    def identity(self):
+        if self.__class__ is not Col:
+            return super().identity
+        args, kwargs = self._constructor_args
+        alias = args[0] if args else kwargs["alias"]
+        target = args[1] if len(args) > 1 else kwargs["target"]
+        of = kwargs.get("output_field", args[2] if len(args) > 2 else None)
+        return (
+            Col,
+            ("alias", self._identity(alias)),
+            ("target", self._identity(target)),
+            ("output_field", self._identity(of)),
+        )
+
     def __repr__(self):
         alias, target = self.alias, self.target
         identifiers = (alias, str(target)) if alias else (str(target),)
@@ -1393,6 +1452,23 @@ class ColPairs(Expression):
         self.alias = alias
         self.targets = targets
         self.sources = sources
+
+    @cached_property
+    def identity(self):
+        if self.__class__ is not ColPairs:
+            return super().identity
+        args, kwargs = self._constructor_args
+        alias = args[0] if args else kwargs["alias"]
+        targets = args[1] if len(args) > 1 else kwargs["targets"]
+        sources = args[2] if len(args) > 2 else kwargs["sources"]
+        of = kwargs.get("output_field", args[3] if len(args) > 3 else None)
+        return (
+            ColPairs,
+            ("alias", self._identity(alias)),
+            ("targets", self._identity(targets)),
+            ("sources", self._identity(sources)),
+            ("output_field", self._identity(of)),
+        )
 
     def __len__(self):
         return len(self.targets)
@@ -1453,6 +1529,19 @@ class Ref(Expression):
     def __init__(self, refs, source):
         super().__init__()
         self.refs, self.source = refs, source
+
+    @cached_property
+    def identity(self):
+        if self.__class__ is not Ref:
+            return super().identity
+        args, kwargs = self._constructor_args
+        refs = args[0] if args else kwargs["refs"]
+        source = args[1] if len(args) > 1 else kwargs["source"]
+        return (
+            Ref,
+            ("refs", self._identity(refs)),
+            ("source", self._identity(source)),
+        )
 
     def __repr__(self):
         return "{}({}, {})".format(self.__class__.__name__, self.refs, self.source)
@@ -1554,6 +1643,19 @@ class ExpressionWrapper(SQLiteNumericMixin, Expression):
     def __init__(self, expression, output_field):
         super().__init__(output_field=output_field)
         self.expression = expression
+
+    @cached_property
+    def identity(self):
+        if self.__class__ is not ExpressionWrapper:
+            return super().identity
+        args, kwargs = self._constructor_args
+        expr = args[0] if args else kwargs["expression"]
+        of = args[1] if len(args) > 1 else kwargs["output_field"]
+        return (
+            ExpressionWrapper,
+            ("expression", self._identity(expr)),
+            ("output_field", self._identity(of)),
+        )
 
     def set_source_expressions(self, exprs):
         self.expression = exprs[0]
@@ -1929,6 +2031,23 @@ class OrderBy(Expression):
         if not hasattr(expression, "resolve_expression"):
             raise ValueError("expression must be an expression type")
         self.expression = expression
+
+    @cached_property
+    def identity(self):
+        if self.__class__ is not OrderBy:
+            return super().identity
+        args, kwargs = self._constructor_args
+        expr = args[0] if args else kwargs["expression"]
+        desc = kwargs.get("descending", args[1] if len(args) > 1 else False)
+        nf = kwargs.get("nulls_first", args[2] if len(args) > 2 else None)
+        nl = kwargs.get("nulls_last", args[3] if len(args) > 3 else None)
+        return (
+            OrderBy,
+            ("expression", self._identity(expr)),
+            ("descending", self._identity(desc)),
+            ("nulls_first", self._identity(nf)),
+            ("nulls_last", self._identity(nl)),
+        )
 
     def __repr__(self):
         return "{}({}, descending={})".format(
