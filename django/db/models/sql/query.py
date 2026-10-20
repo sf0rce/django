@@ -7,7 +7,6 @@ databases). The abstraction barrier only works one way: this module has to know
 all about the internals of models in order to get the information it needs.
 """
 
-import copy
 import difflib
 import functools
 import sys
@@ -151,6 +150,12 @@ JoinInfo = namedtuple(
     "JoinInfo",
     ("final_field", "targets", "opts", "joins", "path", "transform_function"),
 )
+
+
+def _copy_select_related(d):
+    if isinstance(d, dict):
+        return {k: _copy_select_related(v) for k, v in d.items()}
+    return d
 
 
 class RawQuery:
@@ -419,9 +424,9 @@ class Query(BaseExpression):
         if self._extra_select_cache is not None:
             obj._extra_select_cache = self._extra_select_cache.copy()
         if self.select_related is not False:
-            # Use deepcopy because select_related stores fields in nested
-            # dicts.
-            obj.select_related = copy.deepcopy(obj.select_related)
+            # Use _copy_select_related because select_related stores fields in
+            # nested dicts.
+            obj.select_related = _copy_select_related(obj.select_related)
         if "subq_aliases" in self.__dict__:
             obj.subq_aliases = self.subq_aliases.copy()
         obj.used_aliases = self.used_aliases.copy()
