@@ -124,13 +124,14 @@ class RangeField(CheckPostgresInstalledMixin, models.Field):
             return json.dumps({"empty": True})
         base_field = self.base_field
         result = {"bounds": value._bounds}
+        dummy_obj = AttributeSetter(base_field.attname, None)
         for end in ("lower", "upper"):
             val = getattr(value, end)
             if val is None:
                 result[end] = None
             else:
-                obj = AttributeSetter(base_field.attname, val)
-                result[end] = base_field.value_to_string(obj)
+                setattr(dummy_obj, base_field.attname, val)
+                result[end] = base_field.value_to_string(dummy_obj)
         return json.dumps(result)
 
     def formfield(self, **kwargs):
