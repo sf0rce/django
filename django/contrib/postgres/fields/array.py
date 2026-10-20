@@ -133,15 +133,17 @@ class ArrayField(CheckPostgresInstalledMixin, CheckFieldDefaultMixin, Field):
 
     def get_db_prep_value(self, value, connection, prepared=False):
         if isinstance(value, (list, tuple)):
+            base_get_db_prep_value = self.base_field.get_db_prep_value
             return [
-                self.base_field.get_db_prep_value(i, connection, prepared=False)
+                base_get_db_prep_value(i, connection, prepared=False)
                 for i in value
             ]
         return value
 
     def get_db_prep_save(self, value, connection):
         if isinstance(value, (list, tuple)):
-            return [self.base_field.get_db_prep_save(i, connection) for i in value]
+            base_get_db_prep_save = self.base_field.get_db_prep_save
+            return [base_get_db_prep_save(i, connection) for i in value]
         return value
 
     def deconstruct(self):
@@ -157,14 +159,16 @@ class ArrayField(CheckPostgresInstalledMixin, CheckFieldDefaultMixin, Field):
         if isinstance(value, str):
             # Assume we're deserializing
             vals = json.loads(value)
-            value = [self.base_field.to_python(val) for val in vals]
+            base_to_python = self.base_field.to_python
+            value = [base_to_python(val) for val in vals]
         return value
 
     def _from_db_value(self, value, expression, connection):
         if value is None:
             return value
+        base_from_db_value = self.base_field.from_db_value
         return [
-            self.base_field.from_db_value(item, expression, connection)
+            base_from_db_value(item, expression, connection)
             for item in value
         ]
 
@@ -173,12 +177,15 @@ class ArrayField(CheckPostgresInstalledMixin, CheckFieldDefaultMixin, Field):
         vals = self.value_from_object(obj)
         base_field = self.base_field
 
+        setter = AttributeSetter(base_field.attname, None)
+        base_value_to_string = base_field.value_to_string
+        attname = base_field.attname
         for val in vals:
             if val is None:
                 values.append(None)
             else:
-                obj = AttributeSetter(base_field.attname, val)
-                values.append(base_field.value_to_string(obj))
+                setattr(setter, attname, val)
+                values.append(base_value_to_string(setter))
         return json.dumps(values, ensure_ascii=False)
 
     def get_transform(self, name):
@@ -204,9 +211,10 @@ class ArrayField(CheckPostgresInstalledMixin, CheckFieldDefaultMixin, Field):
 
     def validate(self, value, model_instance):
         super().validate(value, model_instance)
+        base_validate = self.base_field.validate
         for index, part in enumerate(value):
             try:
-                self.base_field.validate(part, model_instance)
+                base_validate(part, model_instance)
             except exceptions.ValidationError as error:
                 raise prefix_validation_error(
                     error,
@@ -223,9 +231,10 @@ class ArrayField(CheckPostgresInstalledMixin, CheckFieldDefaultMixin, Field):
 
     def run_validators(self, value):
         super().run_validators(value)
+        base_run_validators = self.base_field.run_validators
         for index, part in enumerate(value):
             try:
-                self.base_field.run_validators(part)
+                base_run_validators(part)
             except exceptions.ValidationError as error:
                 raise prefix_validation_error(
                     error,
@@ -255,13 +264,14 @@ class ArrayRHSMixin:
     def __init__(self, lhs, rhs):
         # Don't wrap arrays that contains only None values, psycopg doesn't
         # allow this.
-        if isinstance(rhs, (tuple, list)) and any(self._rhs_not_none_values(rhs)):
-            expressions = []
-            for value in rhs:
-                if not hasattr(value, "resolve_expression"):
-                    field = lhs.output_field
-                    value = Value(field.base_field.get_prep_value(value))
-                expressions.append(value)
+        if self._rhs_not_none_values(rhs):
+            base_get_prep_value = lhs.output_field.base_field.get_prep_value
+            expressions = [
+                value
+                if hasattr(value, "resolve_expression")
+                else Value(base_get_prep_value(value))
+                for value in rhs
+            ]
             rhs = Func(
                 *expressions,
                 function="ARRAY",
@@ -275,11 +285,18 @@ class ArrayRHSMixin:
         return "%s::%s" % (rhs, cast_type), rhs_params
 
     def _rhs_not_none_values(self, rhs):
-        for x in rhs:
-            if isinstance(x, (list, tuple)):
-                yield from self._rhs_not_none_values(x)
-            elif x is not None:
-                yield True
+        if not isinstance(rhs, (tuple, list)):
+            return False
+        stack = [rhs]
+        while stack:
+            current = stack.pop()
+            for x in current:
+                if x is not None:
+                    if isinstance(x, (tuple, list)):
+                        stack.append(x)
+                    else:
+                        return True
+        return False
 
 
 @ArrayField.register_lookup
