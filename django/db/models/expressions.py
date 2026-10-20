@@ -525,6 +525,23 @@ class Expression(BaseExpression, Combinable):
     def _constructor_signature(cls):
         return signature(cls.__init__)
 
+    @classproperty
+    @functools.lru_cache(maxsize=128)
+    def _constructor_params(cls):
+        sig = signature(cls.__init__)
+        params = list(sig.parameters.values())[1:]  # skip self
+        explicit_param_names = {
+            p.name
+            for p in params
+            if p.kind
+            in (
+                p.POSITIONAL_ONLY,
+                p.POSITIONAL_OR_KEYWORD,
+                p.KEYWORD_ONLY,
+            )
+        }
+        return params, explicit_param_names
+
     @classmethod
     def _identity(cls, value):
         if isinstance(value, tuple):
@@ -540,17 +557,43 @@ class Expression(BaseExpression, Combinable):
     @cached_property
     def identity(self):
         args, kwargs = self._constructor_args
-        signature = self._constructor_signature.bind_partial(self, *args, **kwargs)
-        signature.apply_defaults()
-        arguments = iter(signature.arguments.items())
-        next(arguments)
+        params, explicit_param_names = self._constructor_params
         identity = [self.__class__]
-        for arg, value in arguments:
-            # If __init__() makes use of *args or **kwargs captures `value`
-            # will respectively be a tuple or a dict that must have its
-            # constituents unpacked (mainly if contain Field instances).
-            value = self._identity(value)
-            identity.append((arg, value))
+        arg_idx = 0
+        num_args = len(args)
+
+        for param in params:
+            name = param.name
+            kind = param.kind
+            default = param.default
+
+            if kind == param.POSITIONAL_ONLY:
+                if arg_idx < num_args:
+                    val = args[arg_idx]
+                    arg_idx += 1
+                else:
+                    val = default
+            elif kind == param.POSITIONAL_OR_KEYWORD:
+                if arg_idx < num_args:
+                    val = args[arg_idx]
+                    arg_idx += 1
+                elif name in kwargs:
+                    val = kwargs[name]
+                else:
+                    val = default
+            elif kind == param.VAR_POSITIONAL:
+                val = args[arg_idx:]
+                arg_idx = num_args
+            elif kind == param.KEYWORD_ONLY:
+                if name in kwargs:
+                    val = kwargs[name]
+                else:
+                    val = default
+            elif kind == param.VAR_KEYWORD:
+                val = {k: v for k, v in kwargs.items() if k not in explicit_param_names}
+
+            if val is not param.empty:
+                identity.append((name, self._identity(val)))
         return tuple(identity)
 
     def __eq__(self, other):
