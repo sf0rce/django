@@ -42,6 +42,26 @@ class LocMemCache(BaseCache):
             self._cache.move_to_end(key, last=False)
         return pickle.loads(pickled)
 
+    def get_many(self, keys, version=None):
+        d = {}
+        key_map = {}
+        for k in keys:
+            key_map[self.make_and_validate_key(k, version=version)] = k
+
+        with self._lock:
+            for key, k in key_map.items():
+                if self._has_expired(key):
+                    self._delete(key)
+                elif key in self._cache:
+                    pickled = self._cache[key]
+                    self._cache.move_to_end(key, last=False)
+                    d[k] = pickled
+
+        for k, pickled in d.items():
+            d[k] = pickle.loads(pickled)
+
+        return d
+
     def _set(self, key, value, timeout=DEFAULT_TIMEOUT):
         if len(self._cache) >= self._max_entries:
             self._cull()
@@ -54,6 +74,13 @@ class LocMemCache(BaseCache):
         pickled = pickle.dumps(value, self.pickle_protocol)
         with self._lock:
             self._set(key, pickled, timeout)
+
+    def set_many(self, data, timeout=DEFAULT_TIMEOUT, version=None):
+        pickled_data = {self.make_and_validate_key(k, version=version): pickle.dumps(v, self.pickle_protocol) for k, v in data.items()}
+        with self._lock:
+            for key, pickled in pickled_data.items():
+                self._set(key, pickled, timeout)
+        return []
 
     def touch(self, key, timeout=DEFAULT_TIMEOUT, version=None):
         key = self.make_and_validate_key(key, version=version)
@@ -111,6 +138,14 @@ class LocMemCache(BaseCache):
         key = self.make_and_validate_key(key, version=version)
         with self._lock:
             return self._delete(key)
+
+    def delete_many(self, keys, version=None):
+        if not keys:
+            return
+        valid_keys = [self.make_and_validate_key(k, version=version) for k in keys]
+        with self._lock:
+            for key in valid_keys:
+                self._delete(key)
 
     def clear(self):
         with self._lock:
