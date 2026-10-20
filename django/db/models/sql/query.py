@@ -7,7 +7,6 @@ databases). The abstraction barrier only works one way: this module has to know
 all about the internals of models in order to get the information it needs.
 """
 
-import copy
 import difflib
 import functools
 import sys
@@ -67,6 +66,12 @@ FORBIDDEN_ALIAS_PATTERN = _lazy_re_compile(
 # Inspired from
 # https://www.postgresql.org/docs/current/sql-syntax-lexical.html#SQL-SYNTAX-IDENTIFIERS
 EXPLAIN_OPTIONS_PATTERN = _lazy_re_compile(r"[\w-]+")
+
+
+def _copy_select_related(d):
+    if isinstance(d, dict):
+        return {k: _copy_select_related(v) for k, v in d.items()}
+    return d
 
 
 def get_field_names_from_opts(opts):
@@ -398,7 +403,7 @@ class Query(BaseExpression):
         obj.alias_refcount = self.alias_refcount.copy()
         obj.alias_map = self.alias_map.copy()
         obj.external_aliases = self.external_aliases.copy()
-        obj.table_map = self.table_map.copy()
+        obj.table_map = {k: v.copy() for k, v in self.table_map.items()}
         obj.where = self.where.clone()
         obj.annotations = self.annotations.copy()
         if self.annotation_select_mask is not None:
@@ -419,9 +424,7 @@ class Query(BaseExpression):
         if self._extra_select_cache is not None:
             obj._extra_select_cache = self._extra_select_cache.copy()
         if self.select_related is not False:
-            # Use deepcopy because select_related stores fields in nested
-            # dicts.
-            obj.select_related = copy.deepcopy(obj.select_related)
+            obj.select_related = _copy_select_related(obj.select_related)
         if "subq_aliases" in self.__dict__:
             obj.subq_aliases = self.subq_aliases.copy()
         obj.used_aliases = self.used_aliases.copy()
