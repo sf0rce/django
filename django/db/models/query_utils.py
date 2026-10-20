@@ -54,11 +54,19 @@ class Q(tree.Node):
 
     def __init__(self, *args, _connector=None, _negated=False, **kwargs):
         self._check_connector(_connector)
-        super().__init__(
-            children=[*args, *sorted(kwargs.items())],
-            connector=_connector,
-            negated=_negated,
-        )
+        self.connector = _connector or self.default
+        self.negated = _negated
+        if kwargs:
+            if len(kwargs) > 1:
+                kw = sorted(kwargs.items())
+            else:
+                kw = kwargs.items()
+            if args:
+                self.children = [*args, *kw]
+            else:
+                self.children = list(kw)
+        else:
+            self.children = list(args)
 
     @classmethod
     def create(cls, children=None, connector=None, negated=False):
