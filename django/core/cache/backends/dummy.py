@@ -11,6 +11,10 @@ class DummyCache(BaseCache):
         self.make_and_validate_key(key, version=version)
         return True
 
+    def replace(self, key, value, timeout=DEFAULT_TIMEOUT, version=None):
+        self.make_and_validate_key(key, version=version)
+        return False
+
     def get(self, key, default=None, version=None):
         self.make_and_validate_key(key, version=version)
         return default

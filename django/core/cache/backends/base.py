@@ -219,6 +219,28 @@ class BaseCache:
                 d[k] = val
         return d
 
+    def replace(self, key, value, timeout=DEFAULT_TIMEOUT, version=None):
+        """
+        Replace a value in the cache, only if the key already exists.
+
+        Return True if the value was replaced, False if the key didn't exist.
+        """
+        if self.has_key(key, version=version):
+            self.set(key, value, timeout=timeout, version=version)
+            return True
+        return False
+
+    async def areplace(self, key, value, timeout=DEFAULT_TIMEOUT, version=None):
+        """See replace()."""
+        if self.replace.__func__ is not BaseCache.replace:
+            return await sync_to_async(self.replace, thread_sensitive=True)(
+                key, value, timeout=timeout, version=version
+            )
+        if await self.ahas_key(key, version=version):
+            await self.aset(key, value, timeout=timeout, version=version)
+            return True
+        return False
+
     def get_or_set(self, key, default, timeout=DEFAULT_TIMEOUT, version=None):
         """
         Fetch a given key from the cache. If the key does not exist,

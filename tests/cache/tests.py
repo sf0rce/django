@@ -1137,6 +1137,16 @@ class BaseCacheTests:
         # Previous get_or_set() stores None in the cache.
         self.assertIsNone(cache.get("null", "default"))
 
+    def test_replace(self):
+        # Key does not exist, should return False
+        self.assertFalse(cache.replace("foo", "bar"))
+        self.assertIsNone(cache.get("foo"))
+
+        # Key exists, should update and return True
+        cache.set("foo", "baz")
+        self.assertTrue(cache.replace("foo", "qux"))
+        self.assertEqual(cache.get("foo"), "qux")
+
     def test_get_or_set_callable(self):
         def my_callable():
             return "value"

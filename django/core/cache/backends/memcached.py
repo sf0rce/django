@@ -71,6 +71,10 @@ class BaseMemcachedCache(BaseCache):
         key = self.make_and_validate_key(key, version=version)
         return self._cache.add(key, value, self.get_backend_timeout(timeout))
 
+    def replace(self, key, value, timeout=DEFAULT_TIMEOUT, version=None):
+        key = self.make_and_validate_key(key, version=version)
+        return self._cache.replace(key, value, self.get_backend_timeout(timeout))
+
     def get(self, key, default=None, version=None):
         key = self.make_and_validate_key(key, version=version)
         return self._cache.get(key, default)

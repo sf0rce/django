@@ -30,6 +30,12 @@ class FileBasedCache(BaseCache):
         self.set(key, value, timeout, version)
         return True
 
+    def replace(self, key, value, timeout=DEFAULT_TIMEOUT, version=None):
+        if self.has_key(key, version):
+            self.set(key, value, timeout, version)
+            return True
+        return False
+
     def get(self, key, default=None, version=None):
         fname = self._key_to_file(key, version)
         try:
