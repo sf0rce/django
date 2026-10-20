@@ -31,12 +31,14 @@ class SimpleArrayField(forms.CharField):
 
     def clean(self, value):
         value = super().clean(value)
-        return [self.base_field.clean(val) for val in value]
+        base_field_clean = self.base_field.clean
+        return [base_field_clean(val) for val in value]
 
     def prepare_value(self, value):
         if isinstance(value, list):
+            base_field_prepare_value = self.base_field.prepare_value
             return self.delimiter.join(
-                str(self.base_field.prepare_value(v)) for v in value
+                str(base_field_prepare_value(v)) for v in value
             )
         return value
 
@@ -49,9 +51,10 @@ class SimpleArrayField(forms.CharField):
             items = []
         errors = []
         values = []
+        base_field_to_python = self.base_field.to_python
         for index, item in enumerate(items):
             try:
-                values.append(self.base_field.to_python(item))
+                values.append(base_field_to_python(item))
             except ValidationError as error:
                 errors.append(
                     prefix_validation_error(
@@ -68,9 +71,10 @@ class SimpleArrayField(forms.CharField):
     def validate(self, value):
         super().validate(value)
         errors = []
+        base_field_validate = self.base_field.validate
         for index, item in enumerate(value):
             try:
-                self.base_field.validate(item)
+                base_field_validate(item)
             except ValidationError as error:
                 errors.append(
                     prefix_validation_error(
@@ -86,9 +90,10 @@ class SimpleArrayField(forms.CharField):
     def run_validators(self, value):
         super().run_validators(value)
         errors = []
+        base_field_run_validators = self.base_field.run_validators
         for index, item in enumerate(value):
             try:
-                self.base_field.run_validators(item)
+                base_field_run_validators(item)
             except ValidationError as error:
                 errors.append(
                     prefix_validation_error(
@@ -206,7 +211,8 @@ class SplitArrayField(forms.Field):
 
     def to_python(self, value):
         value = super().to_python(value)
-        return [self.base_field.to_python(item) for item in value]
+        base_field_to_python = self.base_field.to_python
+        return [base_field_to_python(item) for item in value]
 
     def clean(self, value):
         cleaned_data = []
@@ -214,10 +220,11 @@ class SplitArrayField(forms.Field):
         if not any(value) and self.required:
             raise ValidationError(self.error_messages["required"])
         max_size = max(self.size, len(value))
+        base_field_clean = self.base_field.clean
         for index in range(max_size):
             item = value[index]
             try:
-                cleaned_data.append(self.base_field.clean(item))
+                cleaned_data.append(base_field_clean(item))
             except ValidationError as error:
                 errors.append(
                     prefix_validation_error(
