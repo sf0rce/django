@@ -395,12 +395,14 @@ class Query(BaseExpression):
         # Copy references to everything.
         obj.__dict__ = self.__dict__.copy()
         # Clone attributes that can't use shallow copy.
-        obj.alias_refcount = self.alias_refcount.copy()
-        obj.alias_map = self.alias_map.copy()
-        obj.external_aliases = self.external_aliases.copy()
-        obj.table_map = self.table_map.copy()
+        obj.alias_refcount = self.alias_refcount.copy() if self.alias_refcount else {}
+        obj.alias_map = self.alias_map.copy() if self.alias_map else {}
+        obj.external_aliases = (
+            self.external_aliases.copy() if self.external_aliases else {}
+        )
+        obj.table_map = self.table_map.copy() if self.table_map else {}
         obj.where = self.where.clone()
-        obj.annotations = self.annotations.copy()
+        obj.annotations = self.annotations.copy() if self.annotations else {}
         if self.annotation_select_mask is not None:
             obj.annotation_select_mask = self.annotation_select_mask.copy()
         if self.combined_queries:
@@ -413,7 +415,7 @@ class Query(BaseExpression):
         # It will get re-populated in the cloned queryset the next time it's
         # used.
         obj._annotation_select_cache = None
-        obj.extra = self.extra.copy()
+        obj.extra = self.extra.copy() if self.extra else {}
         if self.extra_select_mask is not None:
             obj.extra_select_mask = self.extra_select_mask.copy()
         if self._extra_select_cache is not None:
@@ -423,11 +425,14 @@ class Query(BaseExpression):
             # dicts.
             obj.select_related = copy.deepcopy(obj.select_related)
         if "subq_aliases" in self.__dict__:
-            obj.subq_aliases = self.subq_aliases.copy()
-        obj.used_aliases = self.used_aliases.copy()
-        obj._filtered_relations = self._filtered_relations.copy()
+            obj.subq_aliases = self.subq_aliases.copy() if self.subq_aliases else set()
+        obj.used_aliases = self.used_aliases.copy() if self.used_aliases else set()
+        obj._filtered_relations = (
+            self._filtered_relations.copy() if self._filtered_relations else {}
+        )
         # Clear the cached_property, if it exists.
-        obj.__dict__.pop("base_table", None)
+        if "base_table" in obj.__dict__:
+            del obj.__dict__["base_table"]
         return obj
 
     def chain(self, klass=None):
