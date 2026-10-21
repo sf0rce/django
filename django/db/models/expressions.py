@@ -1,4 +1,3 @@
-import copy
 import datetime
 import functools
 from collections import defaultdict
@@ -40,6 +39,11 @@ class Combinable:
     Provide the ability to combine one or two objects with
     some connector. For example F('foo') + F('bar').
     """
+
+    def __copy__(self):
+        obj = object.__new__(self.__class__)
+        obj.__dict__.update(self.__dict__)
+        return obj
 
     # Arithmetic connectors
     ADD = "+"
@@ -440,8 +444,13 @@ class BaseExpression:
             refs |= expr.get_refs()
         return refs
 
+    def __copy__(self):
+        obj = object.__new__(self.__class__)
+        obj.__dict__.update(self.__dict__)
+        return obj
+
     def copy(self):
-        return copy.copy(self)
+        return self.__copy__()
 
     def prefix_references(self, prefix):
         clone = self.copy()
@@ -940,7 +949,7 @@ class F(Combinable):
         return hash(self.name)
 
     def copy(self):
-        return copy.copy(self)
+        return self.__copy__()
 
 
 class ResolvedOuterRef(F):
@@ -1134,10 +1143,13 @@ class Func(SQLiteNumericMixin, Expression):
         return template % data, tuple(params)
 
     def copy(self):
-        copy = super().copy()
-        copy.source_expressions = self.source_expressions[:]
-        copy.extra = self.extra.copy()
-        return copy
+        clone = object.__new__(self.__class__)
+        clone.__dict__.update(self.__dict__)
+        clone.source_expressions = self.source_expressions[:]
+        clone.extra = self.extra.copy()
+        return clone
+
+    __copy__ = copy
 
     @cached_property
     def allowed_default(self):
@@ -1754,9 +1766,12 @@ class Case(SQLiteNumericMixin, Expression):
         *self.cases, self.default = exprs
 
     def copy(self):
-        c = super().copy()
-        c.cases = c.cases[:]
+        c = object.__new__(self.__class__)
+        c.__dict__.update(self.__dict__)
+        c.cases = self.cases[:]
         return c
+
+    __copy__ = copy
 
     def as_sql(
         self, compiler, connection, template=None, case_joiner=None, **extra_context
@@ -1859,9 +1874,12 @@ class Subquery(BaseExpression, Combinable):
         return resolved
 
     def copy(self):
-        clone = super().copy()
+        clone = object.__new__(self.__class__)
+        clone.__dict__.update(self.__dict__)
         clone.query = clone.query.clone()
         return clone
+
+    __copy__ = copy
 
     @property
     def external_aliases(self):
