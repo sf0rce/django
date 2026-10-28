@@ -525,6 +525,17 @@ class Expression(BaseExpression, Combinable):
     def _constructor_signature(cls):
         return signature(cls.__init__)
 
+    @classproperty
+    @functools.lru_cache(maxsize=128)
+    def _constructor_params(cls):
+        sig = signature(cls.__init__)
+        params = list(sig.parameters.values())[1:]
+        if any(
+            p.kind in (p.VAR_POSITIONAL, p.VAR_KEYWORD) for p in params
+        ):
+            return None
+        return [p.name for p in params], [p.default for p in params]
+
     @classmethod
     def _identity(cls, value):
         if isinstance(value, tuple):
@@ -539,18 +550,33 @@ class Expression(BaseExpression, Combinable):
 
     @cached_property
     def identity(self):
+        params_info = self._constructor_params
+        if params_info is None:
+            args, kwargs = self._constructor_args
+            sig = self._constructor_signature.bind_partial(self, *args, **kwargs)
+            sig.apply_defaults()
+            arguments = iter(sig.arguments.items())
+            next(arguments)
+            identity = [self.__class__]
+            for arg, value in arguments:
+                # If __init__() makes use of *args or **kwargs captures `value`
+                # will respectively be a tuple or a dict that must have its
+                # constituents unpacked (mainly if contain Field instances).
+                value = self._identity(value)
+                identity.append((arg, value))
+            return tuple(identity)
+
+        param_names, defaults = params_info
         args, kwargs = self._constructor_args
-        signature = self._constructor_signature.bind_partial(self, *args, **kwargs)
-        signature.apply_defaults()
-        arguments = iter(signature.arguments.items())
-        next(arguments)
         identity = [self.__class__]
-        for arg, value in arguments:
-            # If __init__() makes use of *args or **kwargs captures `value`
-            # will respectively be a tuple or a dict that must have its
-            # constituents unpacked (mainly if contain Field instances).
-            value = self._identity(value)
-            identity.append((arg, value))
+        for i, name in enumerate(param_names):
+            if i < len(args):
+                val = args[i]
+            elif name in kwargs:
+                val = kwargs[name]
+            else:
+                val = defaults[i]
+            identity.append((name, self._identity(val)))
         return tuple(identity)
 
     def __eq__(self, other):
