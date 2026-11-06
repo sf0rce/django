@@ -1,0 +1,3 @@
+## 2026-10-21 - Optimize Node.create and Node.__copy__ direct instantiation
+**Learning:** `Node.create()` previously instantiated `Node()` and reassigned `obj.__class__ = cls`. Reassigning `__class__` incurs descriptor/dictionary cache invalidation overhead, and `Node.__init__` forces a redundant intermediate list creation. In addition, `Node.__copy__()` calling `self.create()` resulted in an unnecessary empty list allocation before reassigning `self.children`.
+**Action:** Use `object.__new__(cls)` directly in `Node.create()` and `object.__new__(self.__class__)` in `Node.__copy__()` to eliminate class reassignments and unused list allocations.
